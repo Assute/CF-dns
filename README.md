@@ -8,12 +8,12 @@
 
 **国内服务器（Gitee）：**
 ```bash
-sudo bash <(curl -fsSL https://gitee.com/Assute/CF-dns/raw/main/install.sh)
+sudo bash <(curl -fsSL https://gitee.com/Assute/CF-dns/releases/download/latest/install.sh)
 ```
 
 **国外服务器（GitHub）：**
 ```bash
-SOURCE=github sudo bash <(curl -fsSL https://raw.githubusercontent.com/Assute/CF-dns/main/install.sh)
+sudo bash <(curl -fsSL https://github.com/Assute/CF-dns/releases/download/latest/install.sh)
 ```
 
 安装完成后访问：`http://你的服务器IP:3600`
