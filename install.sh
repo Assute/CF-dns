@@ -190,7 +190,6 @@ if docker ps | grep -q "cf-cdn-manager"; then
     LOCAL_IP=$(hostname -I | awk '{print $1}')
 
     # 获取公网 IP
-    echo -e "${YELLOW}获取公网 IP...${NC}"
     PUBLIC_IP=""
     for service in "https://api.ipify.org" "https://ifconfig.me/ip" "https://icanhazip.com" "https://ipinfo.io/ip"; do
         PUBLIC_IP=$(curl -s --max-time 5 "$service" 2>/dev/null | tr -d '[:space:]')
