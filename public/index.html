@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare DNS 管理面板</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- Top Header -->
+    <header>
+        <div class="app-container"
+            style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 0;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <button id="mobileMenuToggle" class="mobile-menu-toggle">☰</button>
+                <div class="logo">Cloudflare DNS</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <button id="accountManageBtn" class="btn btn-outline btn-sm">账号管理</button>
+                <button id="logoutBtn" class="btn btn-outline btn-sm">退出登录</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container dashboard-grid">
+        <!-- Sidebar: Domains List -->
+        <aside class="sidebar" id="sidebar">
+            <div class="domain-list">
+                <div class="domain-list-header">
+                    <span>管理域名</span>
+                    <button id="addDomainBtn" class="btn btn-primary btn-sm">添加</button>
+                </div>
+                <div id="domainListContainer">
+                    <!-- Domains will be loaded here -->
+                    <div class="empty-state" style="padding: 1rem; font-size: 0.8rem;">加载中...</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content: DNS Records -->
+        <main class="content-area">
+            <div id="welcomeState" class="empty-state">
+                <h3>选择一个域名开始管理</h3>
+                <p>在左侧列表选择域名，或者点击"+"添加新域名。</p>
+            </div>
+
+            <div id="dnsManager" style="display: none;">
+                <div class="content-header">
+                    <div class="current-domain" id="currentDomainTitle">example.com</div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="batchSSLBtn" class="btn btn-outline"
+                            style="display: none; color: #22c55e; border-color: #22c55e; border-radius: 0.75rem;">批量申请SSL</button>
+                        <button id="batchRevokeSSLBtn" class="btn btn-outline"
+                            style="display: none; color: #f59e0b; border-color: #f59e0b; border-radius: 0.75rem;">批量撤销SSL</button>
+                        <button id="batchEditBtn" class="btn btn-outline"
+                            style="display: none; color: #374151; border-color: #6b7280; border-radius: 0.75rem;">批量修改</button>
+                        <button id="batchDeleteBtn" class="btn btn-outline"
+                            style="display: none; color: var(--danger); border-color: var(--danger); border-radius: 0.75rem;">批量删除</button>
+                        <button id="addRecordBtn" class="btn btn-primary">添加记录</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">
+                                    <input type="checkbox" id="selectAllRecords" title="全选">
+                                </th>
+                                <th>类型</th>
+                                <th>名称 (Name)</th>
+                                <th>内容 (Content)</th>
+                                <th>代理状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dnsTableBody">
+                            <!-- Records will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="recordsLoading" class="text-center" style="display: none; padding: 2rem;">加载中...</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Account Management Modal -->
+    <div id="accountManageModal" class="modal-overlay">
+        <div class="modal" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>账号管理</h3>
+                <button class="close-modal btn-outline btn-sm">✕</button>
+            </div>
+            <form id="changePasswordForm">
+                <div class="form-group">
+                    <label>新用户名 <span style="color: #94a3b8; font-size: 0.75rem;">(留空则不修改)</span></label>
+                    <input type="text" id="newUsername" placeholder="输入新用户名">
+                </div>
+                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 1rem 0;">
+                <div class="form-group">
+                    <label>当前密码 <span style="color: var(--danger); font-size: 0.75rem;">*必填</span></label>
+                    <input type="password" id="currentPassword" required placeholder="输入当前密码">
+                </div>
+                <div class="form-group">
+                    <label>新密码 <span style="color: #94a3b8; font-size: 0.75rem;">(留空则不修改)</span></label>
+                    <input type="password" id="newPassword" placeholder="输入新密码">
+                </div>
+                <div class="form-group">
+                    <label>确认新密码</label>
+                    <input type="password" id="confirmPassword" placeholder="再次输入新密码">
+                </div>
+                <div id="changePasswordError" class="error-msg"></div>
+                <div id="changePasswordSuccess" class="success-msg"
+                    style="display: none; color: #22c55e; font-size: 0.85rem; margin-bottom: 0.75rem;"></div>
+                <div class="modal-actions">
+                    <button type="button" class="close-modal btn btn-outline">取消</button>
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Domain Modal -->
+    <div id="addDomainModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>添加新域名</h3>
+                <button class="close-modal btn-outline btn-sm">✕</button>
+            </div>
+            <form id="addDomainForm">
+                <div class="form-group">
+                    <label>域名 (多个域名用逗号分隔)</label>
+                    <input type="text" id="newDomainName" required placeholder="example.com, test.com">
+                </div>
+                <div class="form-group">
+                    <label>API Token (Bearer Token)</label>
+                    <input type="text" id="newDomainToken" required placeholder="Cloudflare API Token">
+                    <small style="color: #94a3b8; font-size: 0.75rem;">请在 Cloudflare 后台创建一个具有 DNS 编辑权限的 Token。</small>
+                    <a href="tutorial.html" target="_blank" class="tutorial-link"
+                        style="display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 0.5rem; color: #f48120; font-size: 0.8rem; text-decoration: none; transition: all 0.2s ease;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z" />
+                        </svg>
+                        查看 API Token 创建教程
+                    </a>
+                </div>
+                <div id="addDomainError" class="error-msg"></div>
+                <div class="modal-actions">
+                    <button type="button" class="close-modal btn btn-outline">取消</button>
+                    <button type="submit" class="btn btn-primary">验证并添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Domain Modal -->
+    <div id="editDomainModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>编辑域名配置</h3>
+                <button class="close-modal btn-outline btn-sm">✕</button>
+            </div>
+            <form id="editDomainForm">
+                <input type="hidden" id="editDomainId">
+                <div class="form-group">
+                    <label>域名</label>
+                    <input type="text" id="editDomainName" readonly
+                        style="background: var(--bg-secondary); cursor: not-allowed;">
+                </div>
+                <div class="form-group">
+                    <label>API Token (Bearer Token)</label>
+                    <input type="text" id="editDomainToken" required placeholder="Cloudflare API Token">
+                    <small style="color: #94a3b8; font-size: 0.75rem;">更新 API Token 后将重新验证权限。</small>
+                </div>
+                <div id="editDomainError" class="error-msg"></div>
+                <div class="modal-actions">
+                    <button type="button" class="close-modal btn btn-outline">取消</button>
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Record Modal -->
+    <div id="recordModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="recordModalTitle">添加 DNS 记录</h3>
+                <button class="close-modal btn-outline btn-sm">✕</button>
+            </div>
+            <form id="recordForm">
+                <input type="hidden" id="recordId">
+                <div class="form-group">
+                    <label>类型 (Type)</label>
+                    <select id="recordType">
+                        <option value="A">A</option>
+                        <option value="AAAA">AAAA</option>
+                        <option value="CNAME">CNAME</option>
+                        <option value="TXT">TXT</option>
+                        <option value="MX">MX</option>
+                        <option value="NS">NS</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>名称 (Name)</label>
+                    <input type="text" id="recordName" required placeholder="@ 或 subdomain">
+                </div>
+                <div class="form-group">
+                    <label>内容 (IPv4/IPv6/Domain)</label>
+                    <input type="text" id="recordContent" required placeholder="1.2.3.4">
+                </div>
+                <div class="form-group">
+                    <label>代理状态 (Proxy Status)</label>
+                    <select id="recordProxied">
+                        <option value="false">仅 DNS (灰色云)</option>
+                        <option value="true">已代理 (橙色云)</option>
+                    </select>
+                </div>
+                <div id="recordError" class="error-msg"></div>
+                <div class="modal-actions">
+                    <button type="button" class="close-modal btn btn-outline">取消</button>
+                    <button type="submit" class="btn btn-primary">保存记录</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Confirm Delete Modal -->
+    <div id="confirmDeleteModal" class="modal-overlay">
+        <div class="modal" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 id="confirmDeleteTitle">确认删除</h3>
+                <button class="close-modal btn-outline btn-sm">✕</button>
+            </div>
+            <div style="padding: 1rem 0;">
+                <p id="confirmDeleteMessage" style="color: var(--text-secondary);">确定要删除这条DNS记录吗?此操作无法撤销。</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="close-modal btn btn-outline">取消</button>
+                <button type="button" id="confirmDeleteBtn" class="btn btn-primary"
+                    style="background: linear-gradient(135deg, var(--danger) 0%, #DC2626 100%); color: white;">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch Edit Modal -->
+    <div id="batchEditModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>批量修改 DNS 记录</h3>
+                <button class="close-modal btn-outline btn-sm">✕</button>
+            </div>
+            <form id="batchEditForm">
+                <div style="padding: 0.5rem 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                    <p style="color: var(--text-secondary); font-size: 0.875rem;">已选择 <span
+                            id="batchSelectedCount">0</span> 条记录</p>
+                </div>
+                <div class="form-group">
+                    <label>类型 (Type)</label>
+                    <select id="batchRecordType">
+                        <option value="A">A</option>
+                        <option value="AAAA">AAAA</option>
+                        <option value="CNAME">CNAME</option>
+                        <option value="TXT">TXT</option>
+                        <option value="MX">MX</option>
+                        <option value="NS">NS</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>内容 (Content)</label>
+                    <input type="text" id="batchRecordContent" placeholder="留空则类型和内容都不修改">
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" id="batchEditProxied"> 修改代理状态
+                    </label>
+                    <select id="batchRecordProxied" disabled>
+                        <option value="false">仅 DNS (灰色云)</option>
+                        <option value="true">已代理 (橙色云)</option>
+                    </select>
+                </div>
+                <div id="batchEditError" class="error-msg"></div>
+                <div id="batchEditProgress" style="display: none; padding: 0.5rem 0;">
+                    <p style="color: var(--text-secondary); font-size: 0.875rem;">正在处理: <span
+                            id="batchProgressText">0/0</span></p>
+                    <div
+                        style="background: var(--bg-secondary); border-radius: 4px; height: 6px; overflow: hidden; margin-top: 0.5rem;">
+                        <div id="batchProgressBar"
+                            style="background: var(--cf-yellow); height: 100%; width: 0%; transition: width 0.3s;">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="close-modal btn btn-outline">取消</button>
+                    <button type="submit" class="btn btn-primary">应用修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SSL Certificate Modal -->
+    <div id="certModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="certModalTitle">SSL 证书管理</h3>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="close-modal btn-outline btn-sm">✕</button>
+                </div>
+            </div>
+            <div id="certModalContent">
+                <!-- 未申请状态 -->
+                <div id="certNotApplied" style="display: none;">
+                    <div style="text-align: center; padding: 2rem 0;">
+                        <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">该主机名尚未申请 SSL 证书</p>
+                        <p style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 1.5rem;">
+                            申请 Cloudflare Origin Certificate，有效期 15 年<br>
+                            适用于源站服务器与 Cloudflare 之间的加密通信
+                        </p>
+                        <button id="applyCertBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">
+                            申请证书
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 已申请状态 -->
+                <div id="certApplied" style="display: none;">
+                    <div
+                        style="padding: 0.25rem 0; border-bottom: 1px solid var(--border-color); margin-bottom: 0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                            <span style="color: #22c55e; font-size: 1rem;">✓</span>
+                            <span style="color: #22c55e; font-weight: 500; font-size: 0.9rem;">证书已生成</span>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 0.8rem; margin: 0.25rem 0;">
+                            有效期至: <span id="certExpiresOn">-</span> | 覆盖域名: <span id="certHostnames">-</span>
+                        </p>
+                    </div>
+
+                    <!-- 证书内容 - 点击复制 -->
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <label style="font-size: 0.85rem; margin-bottom: 0.25rem;">证书 (PEM) <span
+                                style="color: #94a3b8; font-size: 0.75rem;">- 点击复制</span></label>
+                        <textarea id="certPemContent" readonly onclick="copyCertPem()"
+                            style="width: 100%; height: 180px; font-family: monospace; font-size: 0.7rem; background: var(--bg-secondary); resize: none; cursor: pointer; line-height: 1.3; word-wrap: break-word;"></textarea>
+                    </div>
+
+                    <div id="certKeySection" class="form-group" style="margin-bottom: 0.75rem;">
+                        <label style="font-size: 0.85rem; margin-bottom: 0.25rem;">私钥 (KEY) <span
+                                style="color: #94a3b8; font-size: 0.75rem;">- 点击复制</span></label>
+                        <textarea id="certKeyContent" readonly onclick="copyCertKey()"
+                            style="width: 100%; height: 180px; font-family: monospace; font-size: 0.7rem; background: var(--bg-secondary); resize: none; cursor: pointer; line-height: 1.3; word-wrap: break-word;"></textarea>
+                    </div>
+
+                    <div id="noKeyWarning"
+                        style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 0.75rem; margin-bottom: 0.75rem;">
+                        <p style="color: #f59e0b; font-size: 0.85rem; margin: 0 0 0.5rem 0; font-weight: 600;">⚠️ 无法获取私钥
+                        </p>
+                        <p style="color: var(--text-secondary); font-size: 0.8rem; margin: 0;">
+                            私钥只在首次创建证书时显示，Cloudflare 不会存储私钥。<br>
+                            如需获取私钥，请撤销当前证书后重新申请。
+                        </p>
+                    </div>
+
+                    <div class="cert-buttons">
+                        <div class="cert-download-btns">
+                            <button type="button" id="downloadPemBtn" class="btn btn-primary btn-sm"
+                                onclick="downloadCert('pem')">
+                                下载证书 (.pem)
+                            </button>
+                            <button type="button" id="downloadKeyBtn" class="btn btn-primary btn-sm"
+                                onclick="downloadCert('key')">
+                                下载私钥 (.key)
+                            </button>
+                            <button type="button" id="downloadAllBtn" class="btn btn-outline btn-sm download-all-btn"
+                                onclick="downloadCert('both')"
+                                style="color: var(--cf-yellow); border-color: var(--cf-yellow);">
+                                下载全部
+                            </button>
+                        </div>
+                        <button type="button" id="revokeCertBtn" class="btn btn-outline btn-sm"
+                            style="color: var(--danger); border-color: var(--danger); display: none;">
+                            撤销证书
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 加载中 -->
+                <div id="certLoading" style="display: none; text-align: center; padding: 2rem;">
+                    <p style="color: var(--text-secondary);">加载中...</p>
+                </div>
+
+                <!-- 错误信息 -->
+                <div id="certError" class="error-msg" style="margin-top: 1rem;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="confirmModal" class="modal-overlay" style="z-index: 1100;">
+        <div class="modal" style="max-width: 400px; text-align: center;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+            <h3 id="confirmTitle" style="color: var(--danger); margin-bottom: 0.75rem;">确认撤销</h3>
+            <p id="confirmMessage" style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">
+                确定要撤销此证书吗？撤销后证书将立即失效，无法恢复。
+            </p>
+            <div style="display: flex; gap: 0.75rem; justify-content: center;">
+                <button type="button" id="confirmCancelBtn" class="btn btn-outline" style="padding: 0.5rem 1.5rem;">
+                    取消
+                </button>
+                <button type="button" id="confirmOkBtn" class="btn"
+                    style="padding: 0.5rem 1.5rem; background: var(--danger); color: white;">
+                    确认撤销
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- Batch SSL Progress Modal -->
+    <div id="batchSSLModal" class="modal-overlay" style="z-index: 1100;">
+        <div class="modal" style="max-width: 500px; text-align: center;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🔐</div>
+            <h3 id="batchSSLTitle" style="color: var(--cf-yellow-dark); margin-bottom: 0.75rem;">批量申请 SSL 证书</h3>
+            <p id="batchSSLStatus" style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">
+                准备申请...
+            </p>
+            <div
+                style="background: var(--bg-secondary); border-radius: 0.5rem; height: 8px; overflow: hidden; margin-bottom: 1rem;">
+                <div id="batchSSLProgress"
+                    style="background: linear-gradient(90deg, #22c55e, #16a34a); height: 100%; width: 0%; transition: width 0.3s ease;">
+                </div>
+            </div>
+            <p id="batchSSLCount" style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">0 / 0</p>
+            <div id="batchSSLActions" style="display: none; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+                <button type="button" id="downloadAllCertsBtn" class="btn btn-primary" style="padding: 0.5rem 1.5rem;">
+                    下载全部证书
+                </button>
+                <button type="button" id="closeBatchSSLBtn" class="btn btn-outline" style="padding: 0.5rem 1.5rem;">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Overlay -->
+    <div id="mobileOverlay" class="mobile-overlay"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

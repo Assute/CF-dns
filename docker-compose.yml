@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  cf-cdn:
+    build: .
+    container_name: cf-cdn-manager
+    ports:
+      - "3600:3600"
+    volumes:
+      - ./accounts.json:/app/accounts.json
+      - ./auth.json:/app/auth.json
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
