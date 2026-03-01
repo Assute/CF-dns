@@ -56,10 +56,32 @@ if ! command -v docker &> /dev/null; then
     install_docker
 fi
 
+# 检查 Docker
+echo -e "${YELLOW}检查 Docker...${NC}"
+if ! command -v docker &> /dev/null; then
+    echo -e "${YELLOW}安装 Docker...${NC}"
+    install_docker
+fi
+
 if ! command -v docker-compose &> /dev/null; then
     echo -e "${YELLOW}安装 Docker Compose...${NC}"
-    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
+    # 检测是国内还是国外服务器
+    if [[ "${BASH_SOURCE[0]}" == *"gitee"* ]] || [[ "${0}" == *"gitee"* ]]; then
+        # 国内：使用 pip 安装（更快）
+        if command -v pip3 &> /dev/null; then
+            pip3 install -i https://pypi.tsinghua.edu.cn/simple docker-compose
+        elif command -v pip &> /dev/null; then
+            pip install -i https://pypi.tsinghua.edu.cn/simple docker-compose
+        else
+            # pip 不可用，用官方方式
+            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+        fi
+    else
+        # 国外：使用 GitHub（更稳定）
+        curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        chmod +x /usr/local/bin/docker-compose
+    fi
 fi
 
 echo -e "${GREEN}✅ Docker 已就绪${NC}"
@@ -74,11 +96,12 @@ trap "rm -rf $TEMP_DIR" EXIT
 # 下载压缩包
 echo -e "${YELLOW}下载项目...${NC}"
 # 检测使用的 source（通过脚本来源判断）
-SCRIPT_URL="${BASH_SOURCE[0]}"
-if [[ "$SCRIPT_URL" == *"gitee"* ]]; then
-    DOWNLOAD_URL="https://gitee.com/Assute/CF-dns/releases/download/latest/CF-dns.zip"
+if [[ "${BASH_SOURCE[0]}" == *"gitee"* ]] || [[ "${0}" == *"gitee"* ]]; then
+    # Gitee 自动获取最新 release
+    DOWNLOAD_URL="https://gitee.com/Assute/CF-dns/releases/latest/download/CF-dns.zip"
 else
-    DOWNLOAD_URL="https://github.com/Assute/CF-dns/releases/download/latest/CF-dns.zip"
+    # GitHub 自动获取最新 release
+    DOWNLOAD_URL="https://github.com/Assute/CF-dns/releases/latest/download/CF-dns.zip"
 fi
 
 cd "$TEMP_DIR"
