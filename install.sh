@@ -107,6 +107,10 @@ curl -L "$DOWNLOAD_URL" -o CF-dns.zip || {
 # 解压
 echo -e "${YELLOW}解压文件...${NC}"
 unzip -q CF-dns.zip
+echo -e "${GREEN}✅ 解压完成${NC}"
+
+# 调试：显示解压后的目录结构
+ls -la "$TEMP_DIR" | head -20
 
 # 移动到安装目录
 echo -e "${YELLOW}安装到 $INSTALL_DIR...${NC}"
@@ -117,16 +121,31 @@ fi
 
 mkdir -p "$INSTALL_DIR"
 
-# 处理解压后的文件结构
-# 检查是否有 CF-dns-main 目录（GitHub 默认解压结构）
-if [ -d "$TEMP_DIR/CF-dns-main" ]; then
-    # 移动 CF-dns-main 里的所有文件
-    mv "$TEMP_DIR"/CF-dns-main/* "$INSTALL_DIR/"
-    mv "$TEMP_DIR"/CF-dns-main/.gitignore "$INSTALL_DIR/" 2>/dev/null || true
-else
-    # 直接移动 TEMP_DIR 里的文件
-    mv "$TEMP_DIR"/* "$INSTALL_DIR/" 2>/dev/null
-    [ -f "$TEMP_DIR/.gitignore" ] && mv "$TEMP_DIR/.gitignore" "$INSTALL_DIR/"
+# 处理解压后的文件结构 - 检查多种可能的目录名
+for dir in "$TEMP_DIR"/CF-dns* "$TEMP_DIR"/*-main; do
+    if [ -d "$dir" ] && [ "$(basename "$dir")" != "CF-dns.zip" ]; then
+        echo "找到项目目录: $(basename "$dir")"
+        mv "$dir"/* "$INSTALL_DIR/" 2>/dev/null
+        mv "$dir"/.gitignore "$INSTALL_DIR/" 2>/dev/null || true
+        mv "$dir"/.dockerignore "$INSTALL_DIR/" 2>/dev/null || true
+        break
+    fi
+done
+
+# 如果上面没有匹配，直接复制 TEMP_DIR 的所有内容
+if [ ! -f "$INSTALL_DIR/package.json" ]; then
+    echo "直接复制 TEMP_DIR 文件..."
+    mv "$TEMP_DIR"/* "$INSTALL_DIR/" 2>/dev/null || true
+    [ -f "$TEMP_DIR/.gitignore" ] && mv "$TEMP_DIR/.gitignore" "$INSTALL_DIR/" 2>/dev/null
+    [ -f "$TEMP_DIR/.dockerignore" ] && mv "$TEMP_DIR/.dockerignore" "$INSTALL_DIR/" 2>/dev/null
+fi
+
+# 验证关键文件
+if [ ! -f "$INSTALL_DIR/package.json" ]; then
+    echo -e "${RED}❌ 错误：找不到 package.json${NC}"
+    echo "安装目录内容:"
+    ls -la "$INSTALL_DIR" | head -20
+    exit 1
 fi
 
 # 创建必要文件
