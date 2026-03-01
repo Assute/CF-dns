@@ -185,9 +185,36 @@ if docker ps | grep -q "cf-cdn-manager"; then
     echo -e "${GREEN}✅ 安装完成！${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
-    echo "访问地址: http://$(hostname -I | awk '{print $1}'):$PORT"
+
+    # 获取本地 IP
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+
+    # 获取公网 IP
+    echo -e "${YELLOW}获取公网 IP...${NC}"
+    PUBLIC_IP=""
+    for service in "https://api.ipify.org" "https://ifconfig.me/ip" "https://icanhazip.com" "https://ipinfo.io/ip"; do
+        PUBLIC_IP=$(curl -s --max-time 5 "$service" 2>/dev/null | tr -d '[:space:]')
+        if [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            break
+        fi
+        PUBLIC_IP=""
+    done
+
+    if [ -n "$PUBLIC_IP" ]; then
+        echo -e "${GREEN}公网 IP: ${YELLOW}$PUBLIC_IP${NC}"
+        echo ""
+        echo -e "访问地址: ${GREEN}http://$PUBLIC_IP:$PORT${NC}"
+    else
+        echo -e "${YELLOW}⚠ 无法自动获取公网 IP，请手动查看${NC}"
+        echo ""
+        echo "访问地址: http://$LOCAL_IP:$PORT"
+    fi
+    echo ""
+    echo "默认登录:"
     echo "用户名: admin"
     echo "密码: admin123"
+    echo ""
+    echo "首次登录后请立即修改密码！"
     echo ""
     echo "常用命令:"
     echo "  查看日志: docker-compose -f $INSTALL_DIR/docker-compose.yml logs -f"
