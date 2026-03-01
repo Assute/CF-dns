@@ -200,8 +200,6 @@ if docker ps | grep -q "cf-cdn-manager"; then
     done
 
     if [ -n "$PUBLIC_IP" ]; then
-        echo -e "${GREEN}公网 IP: ${YELLOW}$PUBLIC_IP${NC}"
-        echo ""
         echo -e "访问地址: ${GREEN}http://$PUBLIC_IP:$PORT${NC}"
     else
         echo -e "${YELLOW}⚠ 无法自动获取公网 IP，请手动查看${NC}"
