@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # CF-DNS 一键安装脚本
-# 国内：bash <(curl -fsSL https://gitee.com/Assute/CF-dns/releases/download/latest/install.sh)
-# 国外：bash <(curl -fsSL https://github.com/Assute/CF-dns/releases/download/latest/install.sh)
+# 国内：bash <(curl -fsSL https://gitee.com/Assute/CF-dns/raw/main/install.sh)
+# 国外：bash <(curl -fsSL https://raw.githubusercontent.com/Assute/CF-dns/main/install.sh)
 
 set -e
 
@@ -20,12 +20,6 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  CF-DNS 一键安装${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-
-# 检查是否为 root 用户
-if [[ $EUID -ne 0 ]]; then
-   echo -e "${RED}❌ 必须以 root 用户运行${NC}"
-   exit 1
-fi
 
 # 检测系统
 detect_distro() {
@@ -122,7 +116,18 @@ if [ -d "$INSTALL_DIR" ]; then
 fi
 
 mkdir -p "$INSTALL_DIR"
-mv CF-dns/* "$INSTALL_DIR/" 2>/dev/null || mv "$TEMP_DIR"/* "$INSTALL_DIR/" 2>/dev/null || true
+
+# 处理解压后的文件结构
+# 检查是否有 CF-dns-main 目录（GitHub 默认解压结构）
+if [ -d "$TEMP_DIR/CF-dns-main" ]; then
+    # 移动 CF-dns-main 里的所有文件
+    mv "$TEMP_DIR"/CF-dns-main/* "$INSTALL_DIR/"
+    mv "$TEMP_DIR"/CF-dns-main/.gitignore "$INSTALL_DIR/" 2>/dev/null || true
+else
+    # 直接移动 TEMP_DIR 里的文件
+    mv "$TEMP_DIR"/* "$INSTALL_DIR/" 2>/dev/null
+    [ -f "$TEMP_DIR/.gitignore" ] && mv "$TEMP_DIR/.gitignore" "$INSTALL_DIR/"
+fi
 
 # 创建必要文件
 mkdir -p "$INSTALL_DIR/data"
