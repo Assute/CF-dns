@@ -2,10 +2,13 @@
 let accounts = [];
 let currentAccountId = null;
 let currentRecords = [];
+let currentRecordPage = 1;
+let recordPagination = { page: 1, perPage: 10, totalPages: 1, totalCount: 0, count: 0 };
 let selectedRecords = new Set(); // 多选的记录ID集合
 let pendingDeleteRecordId = null; // 待删除的记录ID
 let pendingDeleteDomainId = null; // 待删除的域名ID
 let pendingBatchDelete = false; // 是否是批量删除
+const RECORDS_PER_PAGE = 10;
 
 // DOM Elements
 const domainListContainer = document.getElementById('domainListContainer');
@@ -14,6 +17,11 @@ const dnsManager = document.getElementById('dnsManager');
 const currentDomainTitle = document.getElementById('currentDomainTitle');
 const dnsTableBody = document.getElementById('dnsTableBody');
 const recordsLoading = document.getElementById('recordsLoading');
+const recordsPagination = document.getElementById('recordsPagination');
+const pageNumberInput = document.getElementById('pageNumberInput');
+const paginationMeta = document.getElementById('paginationMeta');
+const prevPageBtn = document.getElementById('prevPageBtn');
+const nextPageBtn = document.getElementById('nextPageBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 
 // Modals
@@ -101,6 +109,24 @@ function setupEventListeners() {
 
     // Select All Checkbox
     document.getElementById('selectAllRecords').onchange = handleSelectAll;
+    prevPageBtn.onclick = () => {
+        if (currentAccountId && currentRecordPage > 1) {
+            loadRecords(currentAccountId, currentRecordPage - 1);
+        }
+    };
+    nextPageBtn.onclick = () => {
+        if (currentAccountId && currentRecordPage < recordPagination.totalPages) {
+            loadRecords(currentAccountId, currentRecordPage + 1);
+        }
+    };
+    pageNumberInput.onchange = handlePageNumberChange;
+    pageNumberInput.onblur = handlePageNumberChange;
+    pageNumberInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handlePageNumberChange();
+        }
+    });
 
     // Batch Edit Form
     document.getElementById('batchEditForm').onsubmit = handleBatchEdit;
@@ -361,6 +387,7 @@ async function executeDomainDelete() {
 
 function selectDomain(id) {
     currentAccountId = id;
+    currentRecordPage = 1;
     const account = accounts.find(a => a.id === id);
     if (!account) return;
 
@@ -368,8 +395,8 @@ function selectDomain(id) {
     renderDomainList(); // Update active state
 
     welcomeState.style.display = 'none';
-    dnsManager.style.display = 'block';
-    loadRecords(id);
+    dnsManager.style.display = 'flex';
+    loadRecords(id, 1);
 
     // Close mobile menu after selection
     const sidebar = document.getElementById('sidebar');
@@ -380,18 +407,66 @@ function selectDomain(id) {
 
 // --- DNS Management ---
 
-async function loadRecords(accountId) {
+async function loadRecords(accountId, page = 1) {
     dnsTableBody.innerHTML = '';
-    recordsLoading.style.display = 'block';
+    recordsLoading.style.display = 'flex';
+    recordsPagination.style.display = 'none';
 
     try {
+        const query = new URLSearchParams({
+            page: String(page),
+            perPage: String(RECORDS_PER_PAGE)
+        });
+
         // 同时获取 DNS 记录和证书列表
         const [recordsRes, certsRes] = await Promise.all([
-            fetch(`/api/dns/${accountId}/records`),
+            fetch(`/api/dns/${accountId}/records?${query.toString()}`),
             fetch(`/api/dns/${accountId}/certificates`)
         ]);
-        const records = await recordsRes.json();
+        const recordsData = await recordsRes.json();
         const certs = await certsRes.json();
+
+        if (!recordsRes.ok) {
+            throw new Error(recordsData.error || 'DNS 记录加载失败');
+        }
+
+        if (!certsRes.ok) {
+            throw new Error(certs.error || '证书列表加载失败');
+        }
+
+        let records;
+        if (Array.isArray(recordsData)) {
+            const totalCount = recordsData.length;
+            const totalPages = Math.max(Math.ceil(totalCount / RECORDS_PER_PAGE), 1);
+            const safePage = Math.min(page, totalPages);
+
+            if (safePage !== page) {
+                return loadRecords(accountId, safePage);
+            }
+
+            const startIndex = (safePage - 1) * RECORDS_PER_PAGE;
+            records = recordsData.slice(startIndex, startIndex + RECORDS_PER_PAGE);
+            recordPagination = {
+                page: safePage,
+                perPage: RECORDS_PER_PAGE,
+                totalPages,
+                totalCount,
+                count: records.length
+            };
+        } else {
+            records = recordsData.records || [];
+            recordPagination = recordsData.pagination || {
+                page,
+                perPage: RECORDS_PER_PAGE,
+                totalPages: 1,
+                totalCount: records.length,
+                count: records.length
+            };
+
+            if (recordPagination.totalPages > 0 && page > recordPagination.totalPages) {
+                return loadRecords(accountId, recordPagination.totalPages);
+            }
+        }
 
         // 获取已有证书的域名列表
         const certHostnames = new Set();
@@ -405,12 +480,61 @@ async function loadRecords(accountId) {
             }
         });
 
+        currentRecordPage = recordPagination.page || page;
         currentRecords = records;
         renderRecords(records, certHostnames);
+        renderPagination();
     } catch (err) {
+        currentRecords = [];
+        currentRecordPage = 1;
+        recordPagination = { page: 1, perPage: RECORDS_PER_PAGE, totalPages: 1, totalCount: 0, count: 0 };
         dnsTableBody.innerHTML = `<tr><td colspan="6" class="text-center" style="color:var(--danger)">加载失败</td></tr>`;
+        renderPagination();
     } finally {
         recordsLoading.style.display = 'none';
+    }
+}
+
+function renderPagination() {
+    if (recordPagination.totalCount === 0) {
+        recordsPagination.style.display = 'none';
+        pageNumberInput.value = '';
+        pageNumberInput.disabled = true;
+        paginationMeta.textContent = '';
+        prevPageBtn.disabled = true;
+        nextPageBtn.disabled = true;
+        return;
+    }
+
+    const totalPages = Math.max(recordPagination.totalPages || 1, 1);
+    const currentPage = Math.min(recordPagination.page || 1, totalPages);
+
+    pageNumberInput.disabled = totalPages <= 1;
+    pageNumberInput.min = '1';
+    pageNumberInput.max = String(totalPages);
+    pageNumberInput.value = String(currentPage);
+    paginationMeta.textContent = `/ ${totalPages} 页，共 ${recordPagination.totalCount} 条`;
+    prevPageBtn.disabled = currentPage <= 1;
+    nextPageBtn.disabled = currentPage >= totalPages;
+    recordsPagination.style.display = 'flex';
+}
+
+function handlePageNumberChange() {
+    if (!currentAccountId) return;
+
+    const totalPages = Math.max(recordPagination.totalPages || 1, 1);
+    const rawPage = parseInt(pageNumberInput.value, 10);
+
+    if (!Number.isFinite(rawPage)) {
+        pageNumberInput.value = String(currentRecordPage);
+        return;
+    }
+
+    const targetPage = Math.min(Math.max(rawPage, 1), totalPages);
+    pageNumberInput.value = String(targetPage);
+
+    if (targetPage !== currentRecordPage) {
+        loadRecords(currentAccountId, targetPage);
     }
 }
 
@@ -443,9 +567,11 @@ function renderRecords(records, certHostnames = new Set()) {
                 : '<span class="badge badge-gray">仅 DNS</span>'}
             </td>
             <td data-label="操作">
-                <button class="btn btn-outline btn-sm" style="color:${sslBtnColor}; border-color:${sslBtnColor}" onclick="openCertModal('${rec.name}')">SSL</button>
-                <button class="btn btn-outline btn-sm" style="color:#3b82f6; border-color:#3b82f6" onclick="openRecordModal('${rec.id}')">编辑</button>
-                <button class="btn btn-outline btn-sm" style="color:var(--danger); border-color:var(--danger)" onclick="deleteRecord('${rec.id}')">删除</button>
+                <div class="record-actions">
+                    <button class="btn btn-outline btn-sm" style="color:${sslBtnColor}; border-color:${sslBtnColor}" onclick="openCertModal('${rec.name}')">SSL</button>
+                    <button class="btn btn-outline btn-sm" style="color:#3b82f6; border-color:#3b82f6" onclick="openRecordModal('${rec.id}')">编辑</button>
+                    <button class="btn btn-outline btn-sm" style="color:var(--danger); border-color:var(--danger)" onclick="deleteRecord('${rec.id}')">删除</button>
+                </div>
             </td>
         </tr>
     `}).join('');
@@ -512,7 +638,7 @@ async function handleSaveRecord(e) {
             errorEl.textContent = result.error;
         } else {
             closeAllModals();
-            loadRecords(currentAccountId);
+            loadRecords(currentAccountId, currentRecordPage);
         }
     } catch (err) {
         errorEl.textContent = '操作失败';
@@ -566,12 +692,7 @@ async function executeRecordDelete() {
 
         if (res.ok && data.success) {
             console.log('[executeRecordDelete] Delete successful, updating UI');
-
-            // 从 currentRecords 数组中移除该记录
-            currentRecords = currentRecords.filter(rec => rec.id !== id);
-
-            // 直接更新 UI,不重新加载
-            renderRecords(currentRecords);
+            await loadRecords(currentAccountId, currentRecordPage);
         } else {
             console.error('[executeRecordDelete] Delete failed:', data);
             alert('删除失败: ' + (data.error || '未知错误'));
@@ -882,13 +1003,13 @@ async function handleBatchEdit(e) {
 
     if (failCount === 0) {
         closeAllModals();
-        loadRecords(currentAccountId);
+        loadRecords(currentAccountId, currentRecordPage);
     } else {
         document.getElementById('batchEditError').textContent =
             `完成: ${successCount} 成功, ${failCount} 失败`;
         setTimeout(() => {
             closeAllModals();
-            loadRecords(currentAccountId);
+            loadRecords(currentAccountId, currentRecordPage);
         }, 2000);
     }
 }
@@ -910,17 +1031,13 @@ async function executeBatchDelete() {
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
 
-    // 从 currentRecords 中移除成功删除的记录
-    const deletedIds = results.filter(r => r.success).map(r => r.recordId);
-    currentRecords = currentRecords.filter(rec => !deletedIds.includes(rec.id));
-
     if (failCount > 0) {
         alert(`删除完成: ${successCount} 成功, ${failCount} 失败`);
     }
 
     // 清空选中状态并刷新
     selectedRecords.clear();
-    renderRecords(currentRecords);
+    await loadRecords(currentAccountId, currentRecordPage);
 }
 
 // 修改 executeDelete 函数以支持批量删除
@@ -1048,7 +1165,7 @@ async function applyCertificate() {
             showCertApplied(data.certificate);
             // 刷新记录列表以更新SSL按钮颜色
             if (currentAccountId) {
-                loadRecords(currentAccountId);
+                loadRecords(currentAccountId, currentRecordPage);
             }
         } else {
             errorEl.textContent = data.error || '申请证书失败';
@@ -1196,7 +1313,7 @@ function revokeCertificate(certId) {
                     showCopyToast('证书已撤销');
                     // 刷新记录列表以更新SSL按钮颜色
                     if (currentAccountId) {
-                        loadRecords(currentAccountId);
+                        loadRecords(currentAccountId, currentRecordPage);
                     }
                 } else {
                     errorEl.textContent = data.error || '撤销证书失败';
@@ -1228,7 +1345,7 @@ document.getElementById('closeBatchSSLBtn').addEventListener('click', () => {
     document.getElementById('batchSSLModal').classList.remove('active');
     // 刷新记录列表以更新SSL按钮颜色
     if (currentAccountId) {
-        loadRecords(currentAccountId);
+        loadRecords(currentAccountId, currentRecordPage);
     }
 });
 document.getElementById('downloadAllCertsBtn').addEventListener('click', downloadAllCerts);

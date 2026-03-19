@@ -12,13 +12,13 @@
 <body>
     <!-- Top Header -->
     <header>
-        <div class="app-container"
+        <div class="app-container topbar"
             style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 0;">
-            <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="topbar-left" style="display: flex; align-items: center; gap: 1rem;">
                 <button id="mobileMenuToggle" class="mobile-menu-toggle">☰</button>
                 <div class="logo">Cloudflare DNS</div>
             </div>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="topbar-right" style="display: flex; align-items: center; gap: 0.5rem;">
                 <button id="accountManageBtn" class="btn btn-outline btn-sm">账号管理</button>
                 <button id="logoutBtn" class="btn btn-outline btn-sm">退出登录</button>
             </div>
@@ -49,8 +49,11 @@
 
             <div id="dnsManager" style="display: none;">
                 <div class="content-header">
-                    <div class="current-domain" id="currentDomainTitle">example.com</div>
-                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <div class="content-header-top">
+                        <div class="current-domain" id="currentDomainTitle">example.com</div>
+                        <button id="addRecordBtn" class="btn btn-primary">添加记录</button>
+                    </div>
+                    <div class="header-actions">
                         <button id="batchSSLBtn" class="btn btn-outline"
                             style="display: none; color: #22c55e; border-color: #22c55e; border-radius: 0.75rem;">批量申请SSL</button>
                         <button id="batchRevokeSSLBtn" class="btn btn-outline"
@@ -59,30 +62,50 @@
                             style="display: none; color: #374151; border-color: #6b7280; border-radius: 0.75rem;">批量修改</button>
                         <button id="batchDeleteBtn" class="btn btn-outline"
                             style="display: none; color: var(--danger); border-color: var(--danger); border-radius: 0.75rem;">批量删除</button>
-                        <button id="addRecordBtn" class="btn btn-primary">添加记录</button>
+                        <button type="button" class="btn btn-primary desktop-add-record" onclick="openRecordModal()">添加记录</button>
                     </div>
                 </div>
 
-                <div style="overflow-x: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="width: 40px;">
-                                    <input type="checkbox" id="selectAllRecords" title="全选">
-                                </th>
-                                <th>类型</th>
-                                <th>名称 (Name)</th>
-                                <th>内容 (Content)</th>
-                                <th>代理状态</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dnsTableBody">
-                            <!-- Records will be loaded here -->
-                        </tbody>
-                    </table>
+                <div class="records-stage">
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" id="selectAllRecords" title="全选">
+                                    </th>
+                                    <th>类型</th>
+                                    <th>名称 (Name)</th>
+                                    <th>内容 (Content)</th>
+                                    <th>代理状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dnsTableBody">
+                                <!-- Records will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="recordsLoading" class="records-loading" style="display: none;">
+                        <div class="records-loading-inner">
+                            <span class="loading-spinner" aria-hidden="true"></span>
+                            <span>加载中...</span>
+                        </div>
+                    </div>
                 </div>
-                <div id="recordsLoading" class="text-center" style="display: none; padding: 2rem;">加载中...</div>
+                <div id="recordsPagination" class="records-pagination" style="display: none;">
+                    <div class="pagination-controls">
+                        <div class="pagination-nav">
+                            <button type="button" id="prevPageBtn" class="btn btn-outline btn-sm">上一页</button>
+                            <div class="pagination-status">
+                                <span class="pagination-label">第</span>
+                                <input type="number" id="pageNumberInput" class="pagination-page-input" min="1" inputmode="numeric">
+                                <span id="paginationMeta" class="pagination-meta"></span>
+                            </div>
+                            <button type="button" id="nextPageBtn" class="btn btn-outline btn-sm">下一页</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -257,7 +280,7 @@
                 <button class="close-modal btn-outline btn-sm">✕</button>
             </div>
             <form id="batchEditForm">
-                <div style="padding: 0.5rem 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                <div class="batch-edit-summary">
                     <p style="color: var(--text-secondary); font-size: 0.875rem;">已选择 <span
                             id="batchSelectedCount">0</span> 条记录</p>
                 </div>

@@ -2,6 +2,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const axios = require('axios');
+const https = require('https');
+const { Resolver } = require('dns');
 const fs = require('fs').promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -13,6 +15,42 @@ const DATA_DIR = path.join(__dirname, 'data');
 const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
 const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
 const CERTIFICATES_FILE = path.join(DATA_DIR, 'certificates.json');
+
+const cloudflareResolver = new Resolver();
+cloudflareResolver.setServers(['1.1.1.1', '8.8.8.8']);
+
+function cloudflareLookup(hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = {};
+    }
+
+    cloudflareResolver.resolve4(hostname, (err4, addresses4) => {
+        if (!err4 && addresses4 && addresses4.length > 0) {
+            if (options?.all) {
+                return callback(null, addresses4.map(address => ({ address, family: 4 })));
+            }
+            return callback(null, addresses4[0], 4);
+        }
+
+        cloudflareResolver.resolve6(hostname, (err6, addresses6) => {
+            if (!err6 && addresses6 && addresses6.length > 0) {
+                if (options?.all) {
+                    return callback(null, addresses6.map(address => ({ address, family: 6 })));
+                }
+                return callback(null, addresses6[0], 6);
+            }
+
+            callback(err4 || err6 || new Error(`DNS lookup failed for ${hostname}`));
+        });
+    });
+}
+
+// 某些本地 DNS 对 Node 的响应异常，这里给 Cloudflare API 请求加公共 DNS 兜底
+const cloudflareApi = axios.create({
+    httpsAgent: new https.Agent({ lookup: cloudflareLookup }),
+    timeout: 15000
+});
 
 app.use(bodyParser.json());
 app.use(express.static('public'));
@@ -58,6 +96,38 @@ async function saveCertificatesWithLock(newCert) {
         throw err;
     });
     return certWriteLock;
+}
+
+async function fetchDnsRecordsPage(account, page = 1, perPage = 10) {
+    const headers = {
+        'Authorization': `Bearer ${account.token}`,
+        'Content-Type': 'application/json'
+    };
+    const response = await cloudflareApi.get(
+        `https://api.cloudflare.com/client/v4/zones/${account.zoneId}/dns_records`,
+        {
+            headers,
+            params: {
+                page,
+                per_page: perPage
+            }
+        }
+    );
+
+    if (!response.data.success) {
+        throw new Error(response.data.errors?.[0]?.message || '获取 DNS 记录失败');
+    }
+
+    return {
+        records: response.data.result || [],
+        pagination: {
+            page: response.data.result_info?.page || page,
+            perPage: response.data.result_info?.per_page || perPage,
+            totalPages: response.data.result_info?.total_pages || 1,
+            totalCount: response.data.result_info?.total_count || 0,
+            count: response.data.result_info?.count || (response.data.result || []).length
+        }
+    };
 }
 
 // 认证中间件
@@ -154,7 +224,7 @@ app.post('/api/accounts', requireAuth, async (req, res) => {
         }
 
         // 验证 Token 并获取 Zone ID
-        const response = await axios.get(
+        const response = await cloudflareApi.get(
             `https://api.cloudflare.com/client/v4/zones?name=${domain}`,
             {
                 headers: {
@@ -213,7 +283,7 @@ app.put('/api/accounts/:id', requireAuth, async (req, res) => {
         const account = accounts[accountIndex];
 
         // 验证新的 Token
-        const response = await axios.get(
+        const response = await cloudflareApi.get(
             `https://api.cloudflare.com/client/v4/zones?name=${account.domain}`,
             {
                 headers: {
@@ -290,6 +360,9 @@ app.post('/api/accounts/reorder', requireAuth, async (req, res) => {
 app.get('/api/dns/:accountId/records', requireAuth, async (req, res) => {
     try {
         const { accountId } = req.params;
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const requestedPerPage = parseInt(req.query.perPage || req.query.per_page, 10) || 10;
+        const perPage = Math.min(Math.max(requestedPerPage, 1), 100);
         const accounts = await loadJson(ACCOUNTS_FILE);
         const account = accounts.find(acc => acc.id === accountId);
 
@@ -297,17 +370,8 @@ app.get('/api/dns/:accountId/records', requireAuth, async (req, res) => {
             return res.status(404).json({ error: '账户未找到' });
         }
 
-        const response = await axios.get(
-            `https://api.cloudflare.com/client/v4/zones/${account.zoneId}/dns_records`,
-            {
-                headers: {
-                    'Authorization': `Bearer ${account.token}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        res.json(response.data.result);
+        const result = await fetchDnsRecordsPage(account, page, perPage);
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.response?.data?.errors?.[0]?.message || error.message });
     }
@@ -326,7 +390,7 @@ app.post('/api/dns/:accountId/records', requireAuth, async (req, res) => {
             return res.status(404).json({ error: '账户未找到' });
         }
 
-        const response = await axios.post(
+        const response = await cloudflareApi.post(
             `https://api.cloudflare.com/client/v4/zones/${account.zoneId}/dns_records`,
             { type, name, content, ttl: ttl || 1, proxied: proxied || false },
             {
@@ -356,7 +420,7 @@ app.put('/api/dns/:accountId/records/:id', requireAuth, async (req, res) => {
             return res.status(404).json({ error: '账户未找到' });
         }
 
-        const response = await axios.put(
+        const response = await cloudflareApi.put(
             `https://api.cloudflare.com/client/v4/zones/${account.zoneId}/dns_records/${id}`,
             { type, name, content, ttl: ttl || 1, proxied: proxied || false },
             {
@@ -388,7 +452,7 @@ app.delete('/api/dns/:accountId/records/:id', requireAuth, async (req, res) => {
 
         console.log(`[DELETE] Using Token: ${account.token.substring(0, 5)}... Zone: ${account.zoneId}`);
 
-        await axios.delete(
+        await cloudflareApi.delete(
             `https://api.cloudflare.com/client/v4/zones/${account.zoneId}/dns_records/${id}`,
             {
                 headers: {
@@ -421,7 +485,7 @@ app.get('/api/dns/:accountId/certificates', requireAuth, async (req, res) => {
         }
 
         // 从 Cloudflare API 获取所有 Origin Certificates
-        const response = await axios.get(
+        const response = await cloudflareApi.get(
             `https://api.cloudflare.com/client/v4/certificates?zone_id=${account.zoneId}`,
             {
                 headers: {
@@ -484,7 +548,7 @@ app.get('/api/dns/:accountId/certificates/:hostname', requireAuth, async (req, r
         }
 
         // 从 Cloudflare API 获取证书列表
-        const response = await axios.get(
+        const response = await cloudflareApi.get(
             `https://api.cloudflare.com/client/v4/certificates?zone_id=${account.zoneId}`,
             {
                 headers: {
@@ -601,7 +665,7 @@ app.post('/api/dns/:accountId/certificates', requireAuth, async (req, res) => {
         console.log('[CERT] CSR generated, calling Cloudflare API...');
 
         // 调用 Cloudflare API 申请 Origin Certificate
-        const response = await axios.post(
+        const response = await cloudflareApi.post(
             'https://api.cloudflare.com/client/v4/certificates',
             {
                 hostnames: hostnames,
@@ -665,7 +729,7 @@ app.delete('/api/dns/:accountId/certificates/:certId', requireAuth, async (req, 
         }
 
         // 调用 Cloudflare API 撤销证书
-        await axios.delete(
+        await cloudflareApi.delete(
             `https://api.cloudflare.com/client/v4/certificates/${certId}`,
             {
                 headers: {
