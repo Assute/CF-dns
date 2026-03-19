@@ -1,6 +1,6 @@
 {
   "name": "cf-dns",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Cloudflare DNS 多域名管理面板",
   "main": "server.js",
   "scripts": {
