@@ -74,7 +74,29 @@ async function loadJson(file) {
 }
 
 async function saveJson(file, data) {
+    await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, JSON.stringify(data, null, 2));
+}
+
+async function ensureJsonFile(file, defaultValue) {
+    try {
+        await fs.access(file);
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            throw error;
+        }
+        await saveJson(file, defaultValue);
+    }
+}
+
+async function ensureDataFiles() {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await ensureJsonFile(AUTH_FILE, {
+        username: 'admin',
+        password: 'admin123'
+    });
+    await ensureJsonFile(ACCOUNTS_FILE, []);
+    await ensureJsonFile(CERTIFICATES_FILE, []);
 }
 
 // 简单的文件锁机制，防止并发写入证书文件
@@ -764,6 +786,14 @@ app.get('*', (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 服务运行在 http://localhost:${PORT}`);
+async function startServer() {
+    await ensureDataFiles();
+    app.listen(PORT, () => {
+        console.log(`🚀 服务运行在 http://localhost:${PORT}`);
+    });
+}
+
+startServer().catch(error => {
+    console.error('❌ 服务启动失败:', error);
+    process.exit(1);
 });

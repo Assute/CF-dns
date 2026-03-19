@@ -151,15 +151,28 @@ fi
 # 创建必要文件
 mkdir -p "$INSTALL_DIR/data"
 
-if [ ! -f "$INSTALL_DIR/accounts.json" ]; then
-    cat > "$INSTALL_DIR/accounts.json" << 'EOF'
-{"admin": "admin123"}
+[ -d "$INSTALL_DIR/accounts.json" ] && rmdir "$INSTALL_DIR/accounts.json" 2>/dev/null || true
+[ -d "$INSTALL_DIR/auth.json" ] && rmdir "$INSTALL_DIR/auth.json" 2>/dev/null || true
+[ -d "$INSTALL_DIR/certificates.json" ] && rmdir "$INSTALL_DIR/certificates.json" 2>/dev/null || true
+
+if [ ! -f "$INSTALL_DIR/data/accounts.json" ]; then
+    cat > "$INSTALL_DIR/data/accounts.json" << 'EOF'
+[]
 EOF
 fi
 
-if [ ! -f "$INSTALL_DIR/auth.json" ]; then
-    cat > "$INSTALL_DIR/auth.json" << 'EOF'
-{"tokens": []}
+if [ ! -f "$INSTALL_DIR/data/auth.json" ]; then
+    cat > "$INSTALL_DIR/data/auth.json" << 'EOF'
+{
+  "username": "admin",
+  "password": "admin123"
+}
+EOF
+fi
+
+if [ ! -f "$INSTALL_DIR/data/certificates.json" ]; then
+    cat > "$INSTALL_DIR/data/certificates.json" << 'EOF'
+[]
 EOF
 fi
 

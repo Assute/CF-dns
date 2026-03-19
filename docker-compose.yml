@@ -7,8 +7,7 @@ services:
     ports:
       - "3600:3600"
     volumes:
-      - ./accounts.json:/app/accounts.json
-      - ./auth.json:/app/auth.json
+      - ./data:/app/data
     restart: unless-stopped
     environment:
       - NODE_ENV=production
