@@ -2,6 +2,13 @@
 
 一个基于 Node.js 的 Cloudflare DNS 管理工具。
 
+## 下载仓库
+
+```bash
+git clone https://github.com/Assute/CF-dns.git
+cd CF-dns
+```
+
 ## 运行环境
 
 - Node.js 18+（建议）
